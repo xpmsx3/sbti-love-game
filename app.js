@@ -657,7 +657,9 @@ const state = {
   styleScores: emptyScores(),
   partnerScores: emptyScores(),
   result: null,
-  justPicked: false
+  justPicked: false,
+  posterDataUrl: "",
+  posterVisible: false
 };
 
 function makeOption(text, effect, partner) {
@@ -963,6 +965,8 @@ function reset(keepType = false) {
   state.partnerScores = emptyScores();
   state.result = null;
   state.justPicked = false;
+  state.posterDataUrl = "";
+  state.posterVisible = false;
 }
 
 function showScreen(id) {
@@ -975,6 +979,12 @@ function getAvatarSources(code) {
   const original = String(code);
   const normalized = original.replace(/!/g, "");
   const unique = Array.from(new Set([
+    `./assets/avatars/${normalized}.png`,
+    `./assets/avatars/${normalized}.webp`,
+    `./assets/avatars/${normalized}.jpg`,
+    `./assets/avatars/${original}.png`,
+    `./assets/avatars/${original}.webp`,
+    `./assets/avatars/${original}.jpg`,
     `https://www.sbti.ai/images/types/${normalized}.png`,
     `https://www.sbti.ai/images/types/${normalized}.jpg`,
     `https://www.sbti.ai/images/types/${normalized}.webp`,
@@ -989,6 +999,218 @@ function renderAvatar(type, className = "") {
   const sources = getAvatarSources(type.code);
   const extra = className ? ` ${className}` : "";
   return `<div class="avatar${extra}"><img src="${sources[0]}" data-sources="${sources.join("|")}" data-index="0" alt="${type.code} ${type.name}" loading="lazy" onerror="(function(img){const list=img.dataset.sources.split('|');const next=Number(img.dataset.index)+1;if(next<list.length){img.dataset.index=String(next);img.src=list[next];}else{img.style.display='none';img.nextElementSibling.style.display='flex';}})(this)"><span class="avatar-fallback">${String(type.code).slice(0, 4)}</span></div>`;
+}
+
+function getShareUrl() {
+  return location.href.startsWith("file:") ? "https://xpmsx3.github.io" : location.href.split("#")[0];
+}
+
+function getShareTitle(result) {
+  return `${result.selectedType} · ${result.selectedTypeMeta.name}｜你的 SBTI，最适合谈哪一种疯感恋爱？`;
+}
+
+function getShareText(result) {
+  return `我测出来是 ${result.selectedType} · ${result.selectedTypeMeta.name}。最适合我的 Top 1 是 ${result.ranked[0].code} · ${result.ranked[0].title}，最容易把我拿捏住的是 ${result.vulnerableMatch.code} · ${result.vulnerableMatch.title}。`;
+}
+
+function drawRoundRect(ctx, x, y, w, h, r, fillStyle, strokeStyle = "") {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+  if (fillStyle) {
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+  }
+  if (strokeStyle) {
+    ctx.strokeStyle = strokeStyle;
+    ctx.stroke();
+  }
+}
+
+function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, color, maxLines = 99, weight = "") {
+  ctx.fillStyle = color;
+  if (weight) {
+    const fontBits = ctx.font.split(" ");
+    fontBits[0] = weight;
+    ctx.font = fontBits.join(" ");
+  }
+  const chars = String(text).split("");
+  let line = "";
+  let lines = 0;
+  chars.forEach((char, index) => {
+    const test = line + char;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, y + lines * lineHeight);
+      line = char;
+      lines += 1;
+    } else {
+      line = test;
+    }
+    if (index === chars.length - 1 && lines < maxLines) {
+      ctx.fillText(line, x, y + lines * lineHeight);
+    }
+  });
+  return Math.min(lines + 1, maxLines);
+}
+
+function buildPoster(result) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1680;
+  const ctx = canvas.getContext("2d");
+  const gradient = ctx.createLinearGradient(0, 0, 1080, 1680);
+  gradient.addColorStop(0, "#fff6f0");
+  gradient.addColorStop(0.5, "#ffe7dc");
+  gradient.addColorStop(1, "#ffd3c9");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = 0; i < 14; i += 1) {
+    const size = 24 + (i % 4) * 10;
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = i % 2 === 0 ? "#c8524c" : "#efaa63";
+    ctx.font = `${size}px serif`;
+    ctx.fillText(i % 3 === 0 ? "*" : i % 3 === 1 ? "+" : ".", 70 + i * 70, 120 + (i % 5) * 210);
+  }
+  ctx.globalAlpha = 1;
+
+  drawRoundRect(ctx, 56, 54, 968, 220, 38, "rgba(255,250,245,.88)", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = "700 30px PingFang SC";
+  ctx.fillText("SBTI LOVE LAB", 94, 120);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = "900 60px PingFang SC";
+  wrapCanvasText(ctx, "你的 SBTI，最适合谈哪一种疯感恋爱？", 94, 190, 820, 78, "#2f1c17", 2);
+  drawRoundRect(ctx, 812, 94, 140, 140, 36, "linear-gradient");
+  drawRoundRect(ctx, 812, 94, 140, 140, 36, "#ffe2d4", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = "900 48px PingFang SC";
+  ctx.fillText(result.selectedType.slice(0, 4), 837, 176);
+
+  drawRoundRect(ctx, 56, 304, 968, 268, 38, "rgba(255,250,245,.94)", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#86665c";
+  ctx.font = "700 26px PingFang SC";
+  ctx.fillText(`${result.selectedType} · ${result.selectedTypeMeta.name}`, 94, 368);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = "900 50px PingFang SC";
+  const verdictLines = wrapCanvasText(ctx, result.verdictLine, 94, 446, 860, 66, "#2f1c17", 3);
+  ctx.fillStyle = "#72564e";
+  ctx.font = "400 28px PingFang SC";
+  wrapCanvasText(ctx, result.verdictDetail, 94, 446 + verdictLines * 68, 860, 44, "#72564e", 4);
+
+  drawRoundRect(ctx, 56, 606, 968, 330, 38, "rgba(255,247,241,.94)", "rgba(239,170,99,.24)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = "800 30px PingFang SC";
+  ctx.fillText("Top 3 Match Types", 94, 668);
+  result.ranked.forEach((item, index) => {
+    const y = 718 + index * 86;
+    drawRoundRect(ctx, 94, y - 34, 892, 62, 24, index === 0 ? "#ffe6dc" : "#fff5ee", "");
+    ctx.fillStyle = "#c8524c";
+    ctx.font = "800 24px PingFang SC";
+    ctx.fillText(`No.${index + 1}`, 122, y + 2);
+    ctx.fillStyle = "#2f1c17";
+    ctx.font = "800 28px PingFang SC";
+    ctx.fillText(`${item.code} · ${item.title}`, 218, y + 2);
+    ctx.fillStyle = "#86665c";
+    ctx.font = "600 22px PingFang SC";
+    ctx.fillText(`总分 ${item.finalScore}`, 820, y + 2);
+  });
+
+  drawRoundRect(ctx, 56, 972, 968, 284, 38, "rgba(255,243,239,.95)", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = "800 30px PingFang SC";
+  ctx.fillText("危险提示", 94, 1036);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = "900 42px PingFang SC";
+  ctx.fillText(`最容易拿捏你：${result.vulnerableMatch.code}`, 94, 1108);
+  ctx.fillStyle = "#72564e";
+  ctx.font = "400 28px PingFang SC";
+  wrapCanvasText(ctx, `${result.vulnerableMatch.title}｜拿捏指数 ${result.vulnerableMatch.finalScore} ｜上头 ${result.vulnerableMatch.hookScore} ｜破防 ${result.vulnerableMatch.exploitScore}`, 94, 1162, 870, 44, "#72564e", 3);
+  ctx.fillStyle = "#86665c";
+  ctx.font = "400 26px PingFang SC";
+  wrapCanvasText(ctx, spicyLines(result)[0].text, 94, 1260 - 76, 870, 40, "#86665c", 4);
+
+  drawRoundRect(ctx, 56, 1300, 968, 266, 38, "rgba(255,250,245,.94)", "rgba(123,82,72,.14)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = "800 28px PingFang SC";
+  ctx.fillText("测完可以继续发给朋友互相伤害", 94, 1360);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = "900 36px PingFang SC";
+  ctx.fillText("Copy the link and keep testing", 94, 1422);
+  drawRoundRect(ctx, 94, 1450, 892, 66, 24, "#fff0e8", "");
+  ctx.fillStyle = "#72564e";
+  ctx.font = "600 24px PingFang SC";
+  wrapCanvasText(ctx, getShareUrl(), 122, 1492, 836, 36, "#72564e", 1);
+  ctx.fillStyle = "#86665c";
+  ctx.font = "500 22px PingFang SC";
+  ctx.fillText("This poster includes the site link, and system share carries the URL too.", 94, 1544);
+
+  return canvas.toDataURL("image/png");
+}
+
+function openPosterModal() {
+  state.posterDataUrl = buildPoster(state.result);
+  state.posterVisible = true;
+  renderResult();
+}
+
+function closePosterModal() {
+  state.posterVisible = false;
+  renderResult();
+}
+
+async function copyShareLink() {
+  const url = getShareUrl();
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      alert("链接已复制，快去发给别人。");
+      return;
+    }
+  } catch (err) {}
+  prompt("复制这个链接继续分享：", url);
+}
+
+function dataUrlToFile(dataUrl, filename) {
+  const [meta, content] = dataUrl.split(",");
+  const mime = meta.match(/data:(.*);base64/)[1];
+  const binary = atob(content);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new File([bytes], filename, { type: mime });
+}
+
+async function shareResultCard() {
+  const result = state.result;
+  const title = getShareTitle(result);
+  const text = getShareText(result);
+  const url = getShareUrl();
+  try {
+    if (navigator.share) {
+      if (!state.posterDataUrl) {
+        state.posterDataUrl = buildPoster(result);
+      }
+      if (navigator.canShare && typeof File !== "undefined") {
+        const file = dataUrlToFile(state.posterDataUrl, `${result.selectedType}-love-report.png`);
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ title, text, url, files: [file] });
+          return;
+        }
+      }
+      await navigator.share({ title, text, url });
+      return;
+    }
+  } catch (err) {
+    if (err && err.name === "AbortError") return;
+  }
+  await copyShareLink();
 }
 
 function renderFloatingHearts() {
@@ -1084,6 +1306,31 @@ function renderResult() {
   };
 }
 
+function renderResult() {
+  const r = state.result;
+  const spicy = spicyLines(r);
+  const summary = holisticSummary(r);
+  const posterModal = state.posterVisible ? `<div class="modal-mask"><div class="modal-card poster-modal"><div class="modal-kicker">分享海报</div><div class="modal-title">这张可以直接发</div><div class="modal-copy">图片底部已经带了网址，系统分享时也会把链接一起带出去。</div><div class="poster-preview"><img src="${state.posterDataUrl}" alt="结果分享图"></div><div class="modal-actions"><a class="btn-secondary poster-link" href="${state.posterDataUrl}" download="${r.selectedType}-love-report.png">保存图片</a><button id="sharePosterBtn" class="btn">系统分享</button></div><div class="modal-actions"><button id="closePosterBtn" class="btn-secondary">关闭</button></div></div></div>` : "";
+  const el = document.getElementById("result");
+  el.innerHTML = `<div class="card floating-wrap"><div class="row"><span class="pill">浣犵殑鎭嬬埍椋庢牸锛?{r.archetype}</span></div><div class="result-head"><div class="result-avatar">${renderAvatar(r.selectedTypeMeta, "avatar-lg")}</div><div><h2 class="title" style="font-size:36px;">${r.selectedType} 路 ${r.selectedTypeMeta.name}</h2><p class="sub">${r.summary}</p></div></div><div class="verdict-hero"><div class="verdict-line">${r.verdictLine}</div><div class="verdict-detail">${r.verdictDetail}</div></div></div><div class="card share-card"><div><div class="share-title">把这份结果发出去</div><div class="share-copy">你可以生成一张更像测试海报的结果图，也可以直接复制网页链接。图片底部会带网址，发出去不怕别人找不到入口。</div></div><div class="share-actions"><button id="makePosterBtn" class="btn">生成结果图</button><button id="shareLinkBtn" class="btn-secondary">复制网站链接</button><button id="systemShareBtn" class="btn-secondary">系统分享</button></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 16px;">浜旇竟褰㈤鏍煎浘</h3><div class="radar-wrap"><div class="radar-box">${radarSvg(r.styleScores, r.targetPartnerVector)}</div><div><div class="legend"><div class="legend-item"><span class="dot" style="background:#c8524c"></span>浣犵殑鎭嬬埍椋庢牸</div><div class="legend-item"><span class="dot" style="background:#efaa63"></span>鐞嗘兂瀵硅薄鐢诲儚</div></div><p class="sub" style="margin-top:14px;">绾㈣壊鏄綘鍦ㄥ叧绯婚噷鐨勭湡瀹為鏍硷紝姗欒壊鏄郴缁熸帹鍑烘潵鐨勨€滀綘鏇撮€傚悎浠€涔堟牱鐨勪汉鈥濄€傝繖寮犲浘鏄敤鏉ヨВ閲婁笅闈负浠€涔堟槸杩?3 涓粨鏋溿€?/p><div class="summary-box"><div class="summary-title">缁煎悎鍒嗘瀽</div><div class="summary-copy">${summary.replace(/\n\n/g, "<br><br>")}</div></div></div></div></div><div class="spicy-card"><div class="spicy-title">杈涜荆瑙ｈ</div><div class="spicy-copy">鍒浜嗭紝鎴戞潵鍛婅瘔浣犱綘鍦ㄦ亱鐖遍噷鍒板簳浠€涔堟鏍凤細</div><div class="spicy-grid">${spicy.map((item) => `<div class="spicy-item"><div class="spicy-head">${item.head}</div><div class="spicy-text">${item.text}</div></div>`).join("")}</div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">鏈€閫傚悎浣犵殑 3 绉嶅璞′汉鏍?/h3><p class="sub" style="margin-top:0;">鎬诲垎鏄渶缁堟帓搴忓垎銆傝创鍚堝害鏄富鍒嗭紱浜掕ˉ搴﹀拰绋冲畾搴︽槸 bonus 鍔犲垎锛岄噺绾ф湰鏉ユ洿灏忥紝涓嶅拰璐村悎搴︽寜鍚屼竴鎶婂昂瀛愭瘮銆?/p><div class="list">${r.ranked.map((item, index) => `<div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: item.code, name: item.title }, "avatar-sm")}<div><div class="match-rank">No.${index + 1} 路 ${item.code}</div><div class="match-name">${item.title}</div></div></div><div class="match-score">鎬诲垎 ${item.finalScore}</div></div><div class="match-copy">${item.tag}</div><div class="match-reason">${item.reason}</div><div class="row" style="margin-top:12px;"><span class="pill">璐村悎搴?${item.fitScore}</span><span class="pill">浜掕ˉ鍔犲垎 ${item.complementBonus}</span><span class="pill">绋冲畾鍔犲垎 ${item.stabilityBonus}</span></div><div class="match-copy">${explainScore(item)}</div><div class="match-copy">${item.note}</div></div>`).join("")}</div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">璋佹渶瀹规槗鎶婁綘鎷挎崗浣?/h3><p class="sub" style="margin-top:0;">杩欎笉鏄渶閫傚悎浣犵殑閭ｇ被浜猴紝杩欐槸鏈€瀹规槗鎶婁綘鑴戝瓙鍜岄槻绾夸竴璧锋幇寮殑閭ｇ被浜恒€?/p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.vulnerableMatch.code, name: r.vulnerableMatch.title }, "avatar-sm")}<div><div class="match-rank">鍗遍櫓瀵硅薄 路 ${r.vulnerableMatch.code}</div><div class="match-name">${r.vulnerableMatch.title}</div></div></div><div class="match-score">鎷挎崗鎸囨暟 ${r.vulnerableMatch.finalScore}</div></div><div class="match-copy">${r.vulnerableMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">涓婂ご鎸囨暟 ${r.vulnerableMatch.hookScore}</span><span class="pill">鐮撮槻鎸囨暟 ${r.vulnerableMatch.exploitScore}</span></div><div class="match-copy">${vulnerableSummary(r.vulnerableMatch)}</div><div class="match-copy">杩欑被浜轰細鍏堣浣犺寰椻€滃畬浜嗘垜濂藉儚寰堝悆杩欏鈥濓紝鐒跺悗浣犲氨寮€濮嬩竴杈瑰槾纭竴杈瑰線鍓嶉€併€?/div><div class="match-copy">${r.vulnerableMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">璋佹渶瀹规槗璁╀綘涓婂ご</h3><p class="sub" style="margin-top:0;">杩欑涓嶆槸涓€瀹氶€傚悎浣狅紝浣嗗氨鏄鏄撹浣犳竻閱掑€兼帀绾匡紝蹇冩瘮鑴戝瓙鍏堝啿鍑哄幓銆?/p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.hottestMatch.code, name: r.hottestMatch.title }, "avatar-sm")}<div><div class="match-rank">涓婂ご瀵硅薄 路 ${r.hottestMatch.code}</div><div class="match-name">${r.hottestMatch.title}</div></div></div><div class="match-score">涓婂ご鎸囨暟 ${r.hottestMatch.finalScore}</div></div><div class="match-copy">${r.hottestMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">蹇冨姩鎸囨暟 ${r.hottestMatch.finalScore}</span><span class="pill">澶辨櫤鎸囨暟 ${Math.max(0, r.hottestMatch.finalScore - 8)}</span></div><div class="match-copy">${hottestSummary(r.hottestMatch)}</div><div class="match-copy">${r.hottestMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">璋佹渶瀹规槗鎶婁綘璋堢牬闃?/h3><p class="sub" style="margin-top:0;">杩欑浜烘渶浼氬湪浣犲槾纭殑鏃跺€欐妸浣犲績鎬佹墦绌匡紝璋堢潃璋堢潃浣犲氨寮€濮嬫€€鐤戣嚜宸便€?/p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.heartbreakMatch.code, name: r.heartbreakMatch.title }, "avatar-sm")}<div><div class="match-rank">鐮撮槻瀵硅薄 路 ${r.heartbreakMatch.code}</div><div class="match-name">${r.heartbreakMatch.title}</div></div></div><div class="match-score">鐮撮槻鎸囨暟 ${r.heartbreakMatch.finalScore}</div></div><div class="match-copy">${r.heartbreakMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">鍐呰€楁寚鏁?${r.heartbreakMatch.finalScore}</span><span class="pill">鎵庡績鎸囨暟 ${Math.max(0, r.heartbreakMatch.finalScore - 6)}</span></div><div class="match-copy">${heartbreakSummary(r.heartbreakMatch)}</div><div class="match-copy">${r.heartbreakMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">璋佹渶瀹规槗鍜屼綘浜掔浉鎶樼（</h3><p class="sub" style="margin-top:0;">杩欑缁勫悎涓嶄竴瀹氫笉鐖憋紝浣嗗緢瀹规槗涓€涓笉鏈嶄竴涓紝鏈€鍚庢妸鍏崇郴璋堝緱鐙楄鍙堜笂澶淂?/p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.dramaMatch.code, name: r.dramaMatch.title }, "avatar-sm")}<div><div class="match-rank">浜掔（瀵硅薄 路 ${r.dramaMatch.code}</div><div class="match-name">${r.dramaMatch.title}</div></div></div><div class="match-score">鐙楄鎸囨暟 ${r.dramaMatch.finalScore}</div></div><div class="match-copy">${r.dramaMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">浜掑憶鎸囨暟 ${r.dramaMatch.finalScore}</span><span class="pill">鍙戠柉鎸囨暟 ${Math.max(0, r.dramaMatch.finalScore - 5)}</span></div><div class="match-copy">${dramaSummary(r.dramaMatch)}</div><div class="match-copy">${r.dramaMatch.note}</div></div></div><div class="actions"><button id="reviewBtn" class="btn">鏌ョ湅璇︾粏澶嶇洏</button><button id="restartBtn" class="btn-secondary">閲嶆柊娴嬩竴娆?/button></div>${posterModal}`;
+  el.querySelector("#makePosterBtn").onclick = openPosterModal;
+  el.querySelector("#shareLinkBtn").onclick = copyShareLink;
+  el.querySelector("#systemShareBtn").onclick = shareResultCard;
+  el.querySelector("#reviewBtn").onclick = () => {
+    renderReview();
+    showScreen("review");
+  };
+  el.querySelector("#restartBtn").onclick = () => {
+    reset(true);
+    renderQuiz();
+    showScreen("quiz");
+  };
+  if (state.posterVisible) {
+    el.querySelector("#closePosterBtn").onclick = closePosterModal;
+    el.querySelector("#sharePosterBtn").onclick = shareResultCard;
+  }
+}
+
 function renderReview() {
   const r = state.result;
   const el = document.getElementById("review");
@@ -1097,3 +1344,709 @@ function renderReview() {
 }
 
 renderWelcome();
+
+const SHARE_FALLBACK_URL = "https://xpmsx3.github.io/sbti-love-game-html-preview/";
+
+function getShareUrl() {
+  if (/^https?:/i.test(location.href)) {
+    return location.href.split("#")[0];
+  }
+  return SHARE_FALLBACK_URL;
+}
+
+function getShareTitle(result) {
+  return `${result.selectedType} · ${result.selectedTypeMeta.name}｜SBTI恋爱测试结果`;
+}
+
+function getShareText(result) {
+  return `我测出来是 ${result.selectedType} · ${result.selectedTypeMeta.name}。最适合我的 Top 1 是 ${result.ranked[0].code} · ${result.ranked[0].title}，最容易把我拿捏住的是 ${result.vulnerableMatch.code} · ${result.vulnerableMatch.title}。`;
+}
+
+function renderFloatingHearts() {
+  return `<div class="floating-hearts"><span class="heart heart-1">❤</span><span class="heart heart-2">♡</span><span class="heart heart-3">❤</span><span class="heart heart-4">✦</span><span class="heart heart-5">♡</span></div>`;
+}
+
+function buildPoster(result) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1600;
+  canvas.height = 2480;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  const fontFamily = `"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif`;
+
+  const gradient = ctx.createLinearGradient(0, 0, w, h);
+  gradient.addColorStop(0, "#fff8f4");
+  gradient.addColorStop(0.5, "#ffe8dd");
+  gradient.addColorStop(1, "#ffd6ca");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+
+  for (let i = 0; i < 16; i += 1) {
+    const x = 120 + (i % 4) * 340;
+    const y = 140 + Math.floor(i / 4) * 420;
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = i % 2 === 0 ? "#c8524c" : "#efaa63";
+    ctx.font = `700 ${42 + (i % 3) * 12}px ${fontFamily}`;
+    ctx.fillText(i % 2 === 0 ? "❤" : "✦", x, y);
+  }
+  ctx.globalAlpha = 1;
+
+  drawRoundRect(ctx, 72, 64, 1456, 260, 44, "rgba(255,250,245,.92)", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `700 40px ${fontFamily}`;
+  ctx.fillText("SBTI LOVE LAB", 126, 146);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = `900 76px ${fontFamily}`;
+  wrapCanvasText(ctx, "你的 SBTI，最适合谈哪一种疯感恋爱？", 126, 232, 1040, 96, "#2f1c17", 2);
+  drawRoundRect(ctx, 1210, 116, 200, 150, 38, "#ffe3d8", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `900 56px ${fontFamily}`;
+  ctx.fillText(result.selectedType.slice(0, 4), 1240, 206);
+
+  drawRoundRect(ctx, 72, 360, 1456, 360, 44, "rgba(255,250,245,.94)", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#86665c";
+  ctx.font = `700 36px ${fontFamily}`;
+  ctx.fillText(`${result.selectedType} · ${result.selectedTypeMeta.name}`, 126, 438);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = `900 64px ${fontFamily}`;
+  const verdictLines = wrapCanvasText(ctx, result.verdictLine, 126, 530, 1280, 82, "#2f1c17", 3);
+  ctx.fillStyle = "#72564e";
+  ctx.font = `400 34px ${fontFamily}`;
+  wrapCanvasText(ctx, result.verdictDetail, 126, 530 + verdictLines * 88, 1280, 52, "#72564e", 4);
+
+  drawRoundRect(ctx, 72, 760, 1456, 430, 44, "rgba(255,247,241,.95)", "rgba(239,170,99,.24)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `800 40px ${fontFamily}`;
+  ctx.fillText("最适合你的 3 种对象人格", 126, 840);
+  result.ranked.forEach((item, index) => {
+    const y = 915 + index * 112;
+    drawRoundRect(ctx, 126, y - 40, 1348, 82, 28, index === 0 ? "#ffe7dd" : "#fff5ee", "");
+    ctx.fillStyle = "#c8524c";
+    ctx.font = `800 30px ${fontFamily}`;
+    ctx.fillText(`No.${index + 1}`, 162, y + 8);
+    ctx.fillStyle = "#2f1c17";
+    ctx.font = `800 34px ${fontFamily}`;
+    ctx.fillText(`${item.code} · ${item.title}`, 300, y + 8);
+    ctx.fillStyle = "#86665c";
+    ctx.font = `700 28px ${fontFamily}`;
+    ctx.fillText(`总分 ${item.finalScore}`, 1248, y + 8);
+  });
+
+  drawRoundRect(ctx, 72, 1234, 1456, 360, 44, "rgba(255,243,239,.95)", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `800 40px ${fontFamily}`;
+  ctx.fillText("谁最容易把你拿捏住", 126, 1318);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = `900 54px ${fontFamily}`;
+  ctx.fillText(`${result.vulnerableMatch.code} · ${result.vulnerableMatch.title}`, 126, 1404);
+  ctx.fillStyle = "#72564e";
+  ctx.font = `400 32px ${fontFamily}`;
+  wrapCanvasText(
+    ctx,
+    `拿捏指数 ${result.vulnerableMatch.finalScore} / 上头指数 ${result.vulnerableMatch.hookScore} / 破防指数 ${result.vulnerableMatch.exploitScore}`,
+    126,
+    1474,
+    1280,
+    46,
+    "#72564e",
+    2
+  );
+  ctx.fillStyle = "#86665c";
+  ctx.font = `400 30px ${fontFamily}`;
+  wrapCanvasText(ctx, vulnerableSummary(result.vulnerableMatch), 126, 1548, 1280, 46, "#86665c", 3);
+
+  drawRoundRect(ctx, 72, 1640, 1456, 700, 44, "rgba(255,250,245,.94)", "rgba(123,82,72,.14)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `800 36px ${fontFamily}`;
+  ctx.fillText("带链接的分享图，发出去就能回流", 126, 1718);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = `900 46px ${fontFamily}`;
+  ctx.fillText("网址在下面，别人顺手就能点开测", 126, 1794);
+  drawRoundRect(ctx, 126, 1842, 1348, 90, 28, "#fff0e8", "");
+  ctx.fillStyle = "#72564e";
+  ctx.font = `600 26px ${fontFamily}`;
+  wrapCanvasText(ctx, getShareUrl(), 160, 1898, 1280, 36, "#72564e", 2);
+  ctx.fillStyle = "#86665c";
+  ctx.font = `500 28px ${fontFamily}`;
+  wrapCanvasText(ctx, "测完可以继续发给朋友，看看谁最容易谈成一锅狗血连续剧。", 126, 1998, 1280, 44, "#86665c", 2);
+
+  return canvas.toDataURL("image/png");
+}
+
+function openPosterModal() {
+  state.posterDataUrl = buildPoster(state.result);
+  state.posterVisible = true;
+  renderResult();
+}
+
+function closePosterModal() {
+  state.posterVisible = false;
+  renderResult();
+}
+
+async function copyShareLink() {
+  const url = getShareUrl();
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      alert("链接已复制，分享给你的朋友吧。");
+      return;
+    }
+  } catch (err) {}
+  prompt("复制这个完整链接继续分享：", url);
+}
+
+function renderResult() {
+  const r = state.result;
+  const spicy = spicyLines(r);
+  const summary = holisticSummary(r);
+  const posterModal = state.posterVisible ? `<div class="modal-mask"><div class="modal-card poster-modal"><div class="modal-kicker">分享海报</div><div class="modal-title">这张可以直接发</div><div class="modal-copy">这次是高清图，底部也带完整链接，不再糊，也不再缺半截网址。</div><div class="poster-preview"><img src="${state.posterDataUrl}" alt="结果分享图"></div><div class="modal-actions"><a class="btn poster-link" href="${state.posterDataUrl}" download="${r.selectedType}-love-report.png">保存图片</a><button id="closePosterBtn" class="btn-secondary">关闭</button></div></div></div>` : "";
+  const el = document.getElementById("result");
+  el.innerHTML = `<div class="card floating-wrap">${renderFloatingHearts()}<div class="row"><span class="pill">你的恋爱风格：${r.archetype}</span></div><div class="result-head"><div class="result-avatar">${renderAvatar(r.selectedTypeMeta, "avatar-lg")}</div><div><h2 class="title" style="font-size:36px;">${r.selectedType} · ${r.selectedTypeMeta.name}</h2><p class="sub">${r.summary}</p></div></div><div class="verdict-hero"><div class="verdict-line">${r.verdictLine}</div><div class="verdict-detail">${r.verdictDetail}</div></div></div><div class="card share-card"><div><div class="share-title">把这份结果发出去</div><div class="share-copy">你可以生成一张更精致的结果图，也可以直接复制完整链接。现在这两条链路都只保留最稳的版本，不再给你添乱。</div></div><div class="share-actions"><button id="makePosterBtn" class="btn">生成结果图</button><button id="shareLinkBtn" class="btn-secondary">复制完整链接</button></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 16px;">五边形风格图</h3><div class="radar-wrap"><div class="radar-box">${radarSvg(r.styleScores, r.targetPartnerVector)}</div><div><div class="legend"><div class="legend-item"><span class="dot" style="background:#c8524c"></span>你的恋爱风格</div><div class="legend-item"><span class="dot" style="background:#efaa63"></span>理想对象画像</div></div><p class="sub" style="margin-top:14px;">红色是你在关系里的真实运行方式，橙色是系统推出来的“你更适合什么样的人”。这张图的作用不是装神秘，是解释下面那一串结论为什么会这么排。</p><div class="summary-box"><div class="summary-title">综合分析</div><div class="summary-copy">${summary.replace(/\n\n/g, "<br><br>")}</div></div></div></div></div><div class="spicy-card"><div class="spicy-title">辛辣解读</div><div class="spicy-copy">别装了，我来告诉你你在恋爱里到底什么死样：</div><div class="spicy-grid">${spicy.map((item) => `<div class="spicy-item"><div class="spicy-head">${item.head}</div><div class="spicy-text">${item.text}</div></div>`).join("")}</div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">最适合你的 3 种对象人格</h3><p class="sub" style="margin-top:0;">总分是最终排序分。贴合度是主分；互补加分和稳定加分是 bonus，不跟贴合度按同一把尺子比。</p><div class="list">${r.ranked.map((item, index) => `<div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: item.code, name: item.title }, "avatar-sm")}<div><div class="match-rank">No.${index + 1} · ${item.code}</div><div class="match-name">${item.title}</div></div></div><div class="match-score">总分 ${item.finalScore}</div></div><div class="match-copy">${item.tag}</div><div class="match-reason">${item.reason}</div><div class="row" style="margin-top:12px;"><span class="pill">贴合度 ${item.fitScore}</span><span class="pill">互补加分 ${item.complementBonus}</span><span class="pill">稳定加分 ${item.stabilityBonus}</span></div><div class="match-copy">${explainScore(item)}</div><div class="match-copy">${item.note}</div></div>`).join("")}</div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易把你拿捏住</h3><p class="sub" style="margin-top:0;">这不是最适合你的那类人，这是最容易让你清醒值先掉线的那类人。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.vulnerableMatch.code, name: r.vulnerableMatch.title }, "avatar-sm")}<div><div class="match-rank">危险对象 · ${r.vulnerableMatch.code}</div><div class="match-name">${r.vulnerableMatch.title}</div></div></div><div class="match-score">拿捏指数 ${r.vulnerableMatch.finalScore}</div></div><div class="match-copy">${r.vulnerableMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">上头指数 ${r.vulnerableMatch.hookScore}</span><span class="pill">破防指数 ${r.vulnerableMatch.exploitScore}</span></div><div class="match-copy">${vulnerableSummary(r.vulnerableMatch)}</div><div class="match-copy">${r.vulnerableMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易让你上头</h3><p class="sub" style="margin-top:0;">不是最稳，但就是很容易让你脑子还没反应过来，心已经先冲了。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.hottestMatch.code, name: r.hottestMatch.title }, "avatar-sm")}<div><div class="match-rank">上头对象 · ${r.hottestMatch.code}</div><div class="match-name">${r.hottestMatch.title}</div></div></div><div class="match-score">上头指数 ${r.hottestMatch.finalScore}</div></div><div class="match-copy">${r.hottestMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">心动指数 ${r.hottestMatch.finalScore}</span><span class="pill">失智指数 ${Math.max(0, r.hottestMatch.finalScore - 8)}</span></div><div class="match-copy">${hottestSummary(r.hottestMatch)}</div><div class="match-copy">${r.hottestMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易把你谈破防</h3><p class="sub" style="margin-top:0;">这类人最会在你嘴硬的时候，精准敲到你心态最脆那一块。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.heartbreakMatch.code, name: r.heartbreakMatch.title }, "avatar-sm")}<div><div class="match-rank">破防对象 · ${r.heartbreakMatch.code}</div><div class="match-name">${r.heartbreakMatch.title}</div></div></div><div class="match-score">破防指数 ${r.heartbreakMatch.finalScore}</div></div><div class="match-copy">${r.heartbreakMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">内耗指数 ${r.heartbreakMatch.finalScore}</span><span class="pill">扎心指数 ${Math.max(0, r.heartbreakMatch.finalScore - 6)}</span></div><div class="match-copy">${heartbreakSummary(r.heartbreakMatch)}</div><div class="match-copy">${r.heartbreakMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易和你互相折磨</h3><p class="sub" style="margin-top:0;">这种组合不一定不爱，但很容易你一句我一句，最后把关系谈成狗血番外篇。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.dramaMatch.code, name: r.dramaMatch.title }, "avatar-sm")}<div><div class="match-rank">互磨对象 · ${r.dramaMatch.code}</div><div class="match-name">${r.dramaMatch.title}</div></div></div><div class="match-score">狗血指数 ${r.dramaMatch.finalScore}</div></div><div class="match-copy">${r.dramaMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">互呛指数 ${r.dramaMatch.finalScore}</span><span class="pill">发疯指数 ${Math.max(0, r.dramaMatch.finalScore - 5)}</span></div><div class="match-copy">${dramaSummary(r.dramaMatch)}</div><div class="match-copy">${r.dramaMatch.note}</div></div></div><div class="actions"><button id="reviewBtn" class="btn">查看详细复盘</button><button id="restartBtn" class="btn-secondary">重新测一次</button></div>${posterModal}`;
+  el.querySelector("#makePosterBtn").onclick = openPosterModal;
+  el.querySelector("#shareLinkBtn").onclick = copyShareLink;
+  el.querySelector("#reviewBtn").onclick = () => {
+    renderReview();
+    showScreen("review");
+  };
+  el.querySelector("#restartBtn").onclick = () => {
+    reset(true);
+    renderQuiz();
+    showScreen("quiz");
+  };
+  if (state.posterVisible) {
+    el.querySelector("#closePosterBtn").onclick = closePosterModal;
+  }
+}
+
+// Final result renderer: overrides older garbled versions and places the share card above the bottom actions.
+function renderResult() {
+  const r = state.result;
+  const spicy = spicyLines(r);
+  const summary = holisticSummary(r);
+  const el = document.getElementById("result");
+
+  const posterModal = state.posterVisible
+    ? `<div class="modal-mask"><div class="modal-card poster-modal"><div class="poster-preview"><img src="${state.posterDataUrl}" alt="结果分享图"></div><div class="modal-actions"><a class="btn poster-link" href="${state.posterDataUrl}" download="${r.selectedType}-love-report.png">保存图片</a><button id="closePosterBtn" class="btn-secondary">关闭</button></div></div></div>`
+    : "";
+
+  const shareCard = `<div class="card share-card"><div><div class="share-title">把这份结果发出去</div><div class="share-copy">“生成结果图”会导出一张长图：包含本页除本模块外的所有内容，直接发就行。</div></div><div class="share-actions"><button id="makePosterBtn" class="btn">生成结果图</button><button id="shareLinkBtn" class="btn-secondary">复制测试完整链接</button></div></div>`;
+
+  el.innerHTML =
+    `<div class="card floating-wrap">${renderFloatingHearts()}<div class="row"><span class="pill">你的恋爱风格：${r.archetype}</span></div><div class="result-head"><div class="result-avatar">${renderAvatar(r.selectedTypeMeta, "avatar-lg")}</div><div><h2 class="title" style="font-size:36px;">${r.selectedType} · ${r.selectedTypeMeta.name}</h2><p class="sub">${r.summary}</p></div></div><div class="verdict-hero"><div class="verdict-line">${r.verdictLine}</div><div class="verdict-detail">${r.verdictDetail}</div></div></div>` +
+    `<div class="card"><h3 style="font-size:26px;margin:0 0 16px;">五边形风格图</h3><div class="radar-wrap"><div class="radar-box">${radarSvg(r.styleScores, r.targetPartnerVector)}</div><div><div class="legend"><div class="legend-item"><span class="dot" style="background:#c8524c"></span>你的恋爱风格</div><div class="legend-item"><span class="dot" style="background:#efaa63"></span>理想对象画像</div></div><p class="sub" style="margin-top:14px;">红色是你在关系里的真实运行方式，橙色是系统推出来的“你更适合什么样的人”。这张图不是装神秘，是解释下面结论为什么会这么排。</p><div class="summary-box"><div class="summary-title">综合分析</div><div class="summary-copy">${summary.replace(/\n\n/g, "<br><br>")}</div></div></div></div></div>` +
+    `<div class="spicy-card"><div class="spicy-title">辛辣解读</div><div class="spicy-copy">别装了，我来告诉你你在恋爱里到底什么死样：</div><div class="spicy-grid">${spicy
+      .map((item) => `<div class="spicy-item"><div class="spicy-head">${item.head}</div><div class="spicy-text">${item.text}</div></div>`)
+      .join("")}</div></div>` +
+    `<div class="card"><h3 style="font-size:26px;margin:0 0 10px;">最适合你的 3 种对象人格</h3><p class="sub" style="margin-top:0;">总分是最终排序分。贴合度是主分；互补加分和稳定加分是 bonus，不跟贴合度按同一把尺子比。</p><div class="list">${r.ranked
+      .map(
+        (item, index) =>
+          `<div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: item.code, name: item.title }, "avatar-sm")}<div><div class="match-rank">No.${index + 1} · ${item.code}</div><div class="match-name">${item.title}</div></div></div><div class="match-score">总分 ${item.finalScore}</div></div><div class="match-copy">${item.tag}</div><div class="match-reason">${item.reason}</div><div class="row" style="margin-top:12px;"><span class="pill">贴合度 ${item.fitScore}</span><span class="pill">互补加分 ${item.complementBonus}</span><span class="pill">稳定加分 ${item.stabilityBonus}</span></div><div class="match-copy">${explainScore(item)}</div><div class="match-copy">${item.note}</div></div>`
+      )
+      .join("")}</div></div>` +
+    `<div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易把你拿捏住</h3><p class="sub" style="margin-top:0;">这不是最适合你的那类人，这是最容易让你清醒值先掉线的那类人。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.vulnerableMatch.code, name: r.vulnerableMatch.title }, "avatar-sm")}<div><div class="match-rank">危险对象 · ${r.vulnerableMatch.code}</div><div class="match-name">${r.vulnerableMatch.title}</div></div></div><div class="match-score">拿捏指数 ${r.vulnerableMatch.finalScore}</div></div><div class="match-copy">${r.vulnerableMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">上头指数 ${r.vulnerableMatch.hookScore}</span><span class="pill">破防指数 ${r.vulnerableMatch.exploitScore}</span></div><div class="match-copy">${vulnerableSummary(r.vulnerableMatch)}</div><div class="match-copy">${r.vulnerableMatch.note}</div></div></div>` +
+    `<div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易让你上头</h3><p class="sub" style="margin-top:0;">不是最稳，但就是很容易让你脑子还没反应过来，心已经先冲了。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.hottestMatch.code, name: r.hottestMatch.title }, "avatar-sm")}<div><div class="match-rank">上头对象 · ${r.hottestMatch.code}</div><div class="match-name">${r.hottestMatch.title}</div></div></div><div class="match-score">上头指数 ${r.hottestMatch.finalScore}</div></div><div class="match-copy">${r.hottestMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">心动指数 ${r.hottestMatch.finalScore}</span><span class="pill">失智指数 ${Math.max(0, r.hottestMatch.finalScore - 8)}</span></div><div class="match-copy">${hottestSummary(r.hottestMatch)}</div><div class="match-copy">${r.hottestMatch.note}</div></div></div>` +
+    `<div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易把你谈破防</h3><p class="sub" style="margin-top:0;">这类人最会在你嘴硬的时候，精准敲到你心态最脆那一块。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.heartbreakMatch.code, name: r.heartbreakMatch.title }, "avatar-sm")}<div><div class="match-rank">破防对象 · ${r.heartbreakMatch.code}</div><div class="match-name">${r.heartbreakMatch.title}</div></div></div><div class="match-score">破防指数 ${r.heartbreakMatch.finalScore}</div></div><div class="match-copy">${r.heartbreakMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">内耗指数 ${r.heartbreakMatch.finalScore}</span><span class="pill">扎心指数 ${Math.max(0, r.heartbreakMatch.finalScore - 6)}</span></div><div class="match-copy">${heartbreakSummary(r.heartbreakMatch)}</div><div class="match-copy">${r.heartbreakMatch.note}</div></div></div>` +
+    `<div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易和你互相折磨</h3><p class="sub" style="margin-top:0;">这种组合不一定不爱，但很容易你一句我一句，最后把关系谈成狗血番外篇。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.dramaMatch.code, name: r.dramaMatch.title }, "avatar-sm")}<div><div class="match-rank">互磨对象 · ${r.dramaMatch.code}</div><div class="match-name">${r.dramaMatch.title}</div></div></div><div class="match-score">折磨指数 ${r.dramaMatch.finalScore}</div></div><div class="match-copy">${r.dramaMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">互呛指数 ${r.dramaMatch.finalScore}</span><span class="pill">发疯指数 ${Math.max(0, r.dramaMatch.finalScore - 5)}</span></div><div class="match-copy">${dramaSummary(r.dramaMatch)}</div><div class="match-copy">${r.dramaMatch.note}</div></div></div>` +
+    shareCard +
+    `<div class="actions"><button id="reviewBtn" class="btn">查看详细复盘</button><button id="restartBtn" class="btn-secondary">重新测一次</button></div>` +
+    posterModal;
+
+  el.querySelector("#makePosterBtn").onclick = openPosterModal;
+  el.querySelector("#shareLinkBtn").onclick = copyShareLink;
+  el.querySelector("#reviewBtn").onclick = () => {
+    renderReview();
+    showScreen("review");
+  };
+  el.querySelector("#restartBtn").onclick = () => {
+    reset(true);
+    renderQuiz();
+    showScreen("quiz");
+  };
+  if (state.posterVisible) {
+    el.querySelector("#closePosterBtn").onclick = closePosterModal;
+  }
+}
+
+function renderReview() {
+  const r = state.result;
+  const el = document.getElementById("review");
+  el.innerHTML = `<div class="card floating-wrap">${renderFloatingHearts()}<div class="row"><span class="pill">详细复盘</span></div><h2 class="title" style="font-size:30px;">${r.selectedType} 的理想对象画像</h2><p class="sub">下面这组分数不是你本人，而是这次测试推出来的“你更适合什么样的人”。</p><div class="grid" style="margin-top:18px;">${Object.entries(r.targetPartnerVector).map(([key, value]) => `<div class="metric-card"><div class="metric-label">${AXIS_META[key].left} / ${AXIS_META[key].right}</div><div class="metric-value">${value}</div></div>`).join("")}</div></div><div class="card"><h3 style="font-size:26px;margin:0 0 16px;">你的全部选择</h3><div class="list">${state.answers.map((item) => `<div class="answer-card"><div class="answer-scene">${item.sceneTitle}</div><div class="answer-question">${item.questionText}</div><div class="answer-choice">${item.optionText}</div></div>`).join("")}</div></div><div class="actions"><button id="backResultBtn" class="btn">返回结果页</button><button id="restartAgainBtn" class="btn-secondary">重新测一次</button></div>`;
+  el.querySelector("#backResultBtn").onclick = () => showScreen("result");
+  el.querySelector("#restartAgainBtn").onclick = () => {
+    reset(true);
+    renderQuiz();
+    showScreen("quiz");
+  };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function loadPosterAvatar(code) {
+  const sources = getAvatarSources(code).filter((src) => {
+    // Only draw same-origin/relative images onto canvas, otherwise export may be blocked by CORS.
+    if (!/^https?:/i.test(src)) return true;
+    try {
+      return new URL(src, location.href).origin === location.origin;
+    } catch (err) {
+      return false;
+    }
+  });
+  return new Promise((resolve) => {
+    let index = 0;
+    const tryNext = () => {
+      if (index >= sources.length) {
+        resolve(null);
+        return;
+      }
+      const img = new Image();
+      // For same-origin assets crossOrigin isn't needed; keep it unset to avoid odd caching behavior.
+      img.onload = () => resolve(img);
+      img.onerror = () => {
+        index += 1;
+        tryNext();
+      };
+      img.src = sources[index];
+    };
+    tryNext();
+  });
+}
+
+function drawPosterAvatar(ctx, img, x, y, size, code) {
+  drawRoundRect(ctx, x, y, size, size, 28, "#ffe3d8", "rgba(200,82,76,.16)");
+  drawRoundRect(ctx, x + 10, y + 10, size - 20, size - 20, 22, "rgba(255,248,242,.96)", "rgba(227,151,92,.34)");
+  if (img) {
+    ctx.save();
+    ctx.beginPath();
+    // Avoid relying on ctx.roundRect() support.
+    const rx = x + 10, ry = y + 10, rw = size - 20, rh = size - 20, rr = 22;
+    ctx.moveTo(rx + rr, ry);
+    ctx.arcTo(rx + rw, ry, rx + rw, ry + rh, rr);
+    ctx.arcTo(rx + rw, ry + rh, rx, ry + rh, rr);
+    ctx.arcTo(rx, ry + rh, rx, ry, rr);
+    ctx.arcTo(rx, ry, rx + rw, ry, rr);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(img, x + 10, y + 10, size - 20, size - 20);
+    ctx.restore();
+    return;
+  }
+  ctx.fillStyle = "#8f544b";
+  ctx.font = `900 ${Math.round(size * 0.24)}px "PingFang SC","Microsoft YaHei",sans-serif`;
+  ctx.textAlign = "center";
+  ctx.fillText(String(code).slice(0, 4), x + size / 2, y + size / 2 + 10);
+  ctx.textAlign = "left";
+}
+
+function uniquePosterCodes(result) {
+  return Array.from(new Set([
+    result.selectedType,
+    ...result.ranked.map((item) => item.code),
+    result.vulnerableMatch.code,
+    result.hottestMatch.code,
+    result.heartbreakMatch.code,
+    result.dramaMatch.code
+  ]));
+}
+
+async function buildPosterV2(result, { forceNoImages = false } = {}) {
+  const w = 1600;
+  const headerH = 312;
+  const verdictH = 420;
+  const radarH = 620;
+  const gapY = 42;
+  const top3H = 504;
+  const margin = 84;
+  const gap = 44;
+  const innerW = w - margin * 2;
+  const cardH = 356;
+  const whoGridH = cardH * 2 + gap;
+  const topPad = 72;
+  const bottomPad = 96;
+  const maxH = 9800;
+  const summary = holisticSummary(result);
+  const spicy = spicyLines(result);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = maxH;
+  const ctx = canvas.getContext("2d");
+  const fontSans = `"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif`;
+  const fontDisplay = `"Songti SC","STSong","SimSun",serif`;
+  const avatarMap = {};
+  if (!forceNoImages) {
+    const codes = uniquePosterCodes(result);
+    const loaded = await Promise.all(codes.map(async (code) => [code, await loadPosterAvatar(code)]));
+    loaded.forEach(([code, img]) => {
+      avatarMap[code] = img;
+    });
+  }
+
+  const gradient = ctx.createLinearGradient(0, 0, w, maxH);
+  gradient.addColorStop(0, "#fff8f4");
+  gradient.addColorStop(0.52, "#ffe8dd");
+  gradient.addColorStop(1, "#ffd6ca");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, maxH);
+
+  for (let i = 0; i < 16; i += 1) {
+    const x = 120 + (i % 4) * 340;
+    const y = 140 + Math.floor(i / 4) * 420;
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = i % 2 === 0 ? "#c8524c" : "#efaa63";
+    ctx.font = `700 ${42 + (i % 3) * 12}px ${fontSans}`;
+    ctx.fillText(i % 2 === 0 ? "\u2665" : "\u2726", x, y);
+  }
+  ctx.globalAlpha = 1;
+
+  const cardR = 52;
+  const softStroke = "rgba(200,82,76,.16)";
+  const softFill = "rgba(255,250,245,.92)";
+
+  const drawCard = (x, y, cw, ch, fill, stroke) => {
+    ctx.save();
+    ctx.shadowColor = "rgba(95,55,52,.10)";
+    ctx.shadowBlur = 28;
+    ctx.shadowOffsetY = 10;
+    drawRoundRect(ctx, x, y, cw, ch, cardR, fill, stroke);
+    ctx.restore();
+  };
+
+  let y = topPad;
+
+  // Header
+  drawCard(margin, y, innerW, 312, softFill, softStroke);
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `700 40px ${fontSans}`;
+  ctx.fillText("SBTI LOVE LAB", margin + 44, y + 92);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = `900 76px ${fontSans}`;
+  wrapCanvasText(ctx, "你的 SBTI，最适合谈哪一种疯感恋爱？", margin + 44, y + 178, 980, 96, "#2f1c17", 2);
+  drawPosterAvatar(ctx, avatarMap[result.selectedType] || null, margin + innerW - 44 - 196, y + 62, 196, result.selectedType);
+
+  y += headerH + gapY;
+
+  // Verdict
+  drawCard(margin, y, innerW, 420, "rgba(255,250,245,.94)", softStroke);
+  drawPosterAvatar(ctx, avatarMap[result.selectedType] || null, margin + 36, y + 74, 170, result.selectedType);
+  ctx.fillStyle = "#86665c";
+  ctx.font = `700 36px ${fontSans}`;
+  ctx.fillText(`${result.selectedType} · ${result.selectedTypeMeta.name}`, margin + 240, y + 118);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = `900 64px ${fontDisplay}`;
+  const verdictLines = wrapCanvasText(ctx, result.verdictLine, margin + 240, y + 206, 1120, 82, "#2f1c17", 3);
+  ctx.fillStyle = "#72564e";
+  ctx.font = `400 34px ${fontSans}`;
+  wrapCanvasText(ctx, result.verdictDetail, margin + 240, y + 206 + verdictLines * 88, 1120, 52, "#72564e", 4);
+
+  y += verdictH + gapY;
+
+  // Radar + Summary
+  drawCard(margin, y, innerW, radarH, "rgba(255,243,239,.95)", softStroke);
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `800 40px ${fontSans}`;
+  ctx.fillText("五边形风格图", margin + 44, y + 92);
+
+  drawRoundRect(ctx, margin + 44, y + 134, 520, 520, 36, "#fff3ea", "rgba(200,82,76,.10)");
+  const radarSvgText = radarSvg(result.styleScores, result.targetPartnerVector);
+  // Only inject xmlns; keep original attributes to avoid duplicate width/height.
+  const radarSvgSized = String(radarSvgText).replace(/<svg\b/, '<svg xmlns="http://www.w3.org/2000/svg"');
+  const radarBlob = new Blob([radarSvgSized], { type: "image/svg+xml;charset=utf-8" });
+  const radarUrl = URL.createObjectURL(radarBlob);
+  try {
+    const radarImg = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = radarUrl;
+    });
+    if (radarImg) ctx.drawImage(radarImg, margin + 44, y + 134, 520, 520);
+  } finally {
+    URL.revokeObjectURL(radarUrl);
+  }
+
+  drawRoundRect(ctx, margin + 604, y + 134, innerW - 648, 520, 36, "rgba(255,250,245,.94)", "rgba(200,82,76,.10)");
+  ctx.fillStyle = "#b24f45";
+  ctx.font = `900 34px ${fontSans}`;
+  ctx.fillText("综合分析", margin + 648, y + 194);
+  ctx.fillStyle = "#72564e";
+  ctx.font = `400 30px ${fontSans}`;
+  // Fit within the 520px text box height.
+  const summaryLineH = 44;
+  const summaryTop = y + 246;
+  const summaryBoxTop = y + 134;
+  const summaryBoxH = 520;
+  const summaryPadBottom = 22;
+  const maxSummaryLines = Math.max(4, Math.floor((summaryBoxTop + summaryBoxH - summaryPadBottom - summaryTop) / summaryLineH));
+  wrapCanvasText(ctx, summary.replace(/\n\n/g, "\n"), margin + 648, summaryTop, innerW - 716, summaryLineH, "#72564e", maxSummaryLines);
+
+  y += radarH + gapY;
+
+  // Spicy
+  const spicyRows = Math.ceil(spicy.length / 2);
+  const spicyCardH = 220 + spicyRows * 196;
+  drawCard(margin, y, innerW, spicyCardH, "rgba(255,243,239,.95)", softStroke);
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `900 42px ${fontSans}`;
+  ctx.fillText("辛辣解读", margin + 44, y + 92);
+  ctx.fillStyle = "#72564e";
+  ctx.font = `400 30px ${fontSans}`;
+  ctx.fillText("别装了，我来告诉你你在恋爱里到底什么死样：", margin + 44, y + 140);
+  const colW = Math.floor((innerW - 44 - gap) / 2);
+  spicy.forEach((item, idx) => {
+    const col = idx % 2;
+    const row = Math.floor(idx / 2);
+    const cx = margin + 44 + col * (colW + gap);
+    const cy = y + 176 + row * 196;
+    drawRoundRect(ctx, cx, cy, colW, 184, 28, "#fff8f4", "rgba(200,82,76,.10)");
+    ctx.fillStyle = "#bd5d4b";
+    ctx.font = `900 26px ${fontSans}`;
+    wrapCanvasText(ctx, item.head, cx + 18, cy + 46, colW - 36, 34, "#bd5d4b", 1);
+    ctx.fillStyle = "#7c5b52";
+    ctx.font = `400 26px ${fontSans}`;
+    wrapCanvasText(ctx, item.text, cx + 18, cy + 88, colW - 36, 36, "#7c5b52", 3);
+  });
+
+  y += spicyCardH + gapY;
+
+  // Top 3
+  drawCard(margin, y, innerW, 504, "rgba(255,247,241,.95)", "rgba(239,170,99,.24)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `800 40px ${fontSans}`;
+  ctx.fillText("最适合你的 3 种对象人格", margin + 44, y + 88);
+  result.ranked.forEach((item, index) => {
+    const rowY = y + 164 + index * 112;
+    drawRoundRect(ctx, margin + 44, rowY - 42, innerW - 88, 88, 28, index === 0 ? "#ffe7dd" : "#fff5ee", "");
+    drawPosterAvatar(ctx, avatarMap[item.code] || null, margin + 64, rowY - 28, 64, item.code);
+    ctx.fillStyle = "#c8524c";
+    ctx.font = `800 30px ${fontSans}`;
+    ctx.fillText(`No.${index + 1}`, margin + 156, rowY + 6);
+    ctx.fillStyle = "#2f1c17";
+    ctx.font = `800 34px ${fontSans}`;
+    ctx.fillText(`${item.code} · ${item.title}`, margin + 292, rowY + 6);
+    ctx.fillStyle = "#86665c";
+    ctx.font = `700 28px ${fontSans}`;
+    ctx.fillText(`总分 ${item.finalScore}`, margin + innerW - 44 - 220, rowY + 6);
+  });
+
+  y += top3H + gapY;
+
+  // "Who" 2x2 grid
+  const whoCards = [
+    {
+      title: "谁最容易把你拿捏住",
+      code: result.vulnerableMatch.code,
+      name: result.vulnerableMatch.title,
+      scores: `拿捏 ${result.vulnerableMatch.finalScore} / 上头 ${result.vulnerableMatch.hookScore} / 破防 ${result.vulnerableMatch.exploitScore}`,
+      copy: vulnerableSummary(result.vulnerableMatch)
+    },
+    {
+      title: "谁最容易让你上头",
+      code: result.hottestMatch.code,
+      name: result.hottestMatch.title,
+      scores: `上头 ${result.hottestMatch.finalScore} / 心动 ${result.hottestMatch.finalScore} / 失智 ${Math.max(0, result.hottestMatch.finalScore - 8)}`,
+      copy: hottestSummary(result.hottestMatch)
+    },
+    {
+      title: "谁最容易把你谈破防",
+      code: result.heartbreakMatch.code,
+      name: result.heartbreakMatch.title,
+      scores: `破防 ${result.heartbreakMatch.finalScore} / 内耗 ${result.heartbreakMatch.finalScore} / 扎心 ${Math.max(0, result.heartbreakMatch.finalScore - 6)}`,
+      copy: heartbreakSummary(result.heartbreakMatch)
+    },
+    {
+      title: "谁最容易和你互相折磨",
+      code: result.dramaMatch.code,
+      name: result.dramaMatch.title,
+      scores: `折磨 ${result.dramaMatch.finalScore} / 互呛 ${result.dramaMatch.finalScore} / 发疯 ${Math.max(0, result.dramaMatch.finalScore - 5)}`,
+      copy: dramaSummary(result.dramaMatch)
+    }
+  ];
+
+  const cardW = Math.floor((innerW - gap) / 2);
+  whoCards.forEach((block, index) => {
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    const cx = margin + col * (cardW + gap);
+    const cy = y + row * (cardH + gap);
+    drawCard(cx, cy, cardW, cardH, "rgba(255,243,239,.95)", softStroke);
+    drawPosterAvatar(ctx, avatarMap[block.code] || null, cx + 28, cy + 106, 120, block.code);
+    ctx.fillStyle = "#c8524c";
+    ctx.font = `800 34px ${fontSans}`;
+    wrapCanvasText(ctx, block.title, cx + 168, cy + 98, cardW - 196, 44, "#c8524c", 2);
+    ctx.fillStyle = "#2f1c17";
+    ctx.font = `900 44px ${fontSans}`;
+    wrapCanvasText(ctx, `${block.code} · ${block.name}`, cx + 168, cy + 168, cardW - 196, 54, "#2f1c17", 2);
+    ctx.fillStyle = "#72564e";
+    ctx.font = `700 26px ${fontSans}`;
+    wrapCanvasText(ctx, block.scores, cx + 168, cy + 242, cardW - 196, 38, "#72564e", 2);
+    ctx.fillStyle = "#86665c";
+    ctx.font = `400 26px ${fontSans}`;
+    wrapCanvasText(ctx, block.copy, cx + 28, cy + 300, cardW - 56, 38, "#86665c", 2);
+  });
+
+  y += whoGridH + bottomPad;
+
+  const usedH = Math.min(maxH, Math.ceil(y));
+  const out = document.createElement("canvas");
+  out.width = w;
+  out.height = usedH;
+  out.getContext("2d").drawImage(canvas, 0, 0, w, usedH, 0, 0, w, usedH);
+
+  try {
+    return out.toDataURL("image/png");
+  } catch (err) {
+    // If remote avatars taint the canvas, rebuild without images.
+    if (!forceNoImages) return await buildPosterV2(result, { forceNoImages: true });
+    throw err;
+  }
+}
+
+async function openPosterModal() {
+  state.posterDataUrl = "";
+  renderResult();
+  await sleep(20);
+  state.posterDataUrl = await buildPosterV2(state.result);
+  state.posterVisible = true;
+  renderResult();
+}
+
+function buildPoster(result) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1600;
+  canvas.height = 2800;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  const fontFamily = `"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif`;
+
+  const gradient = ctx.createLinearGradient(0, 0, w, h);
+  gradient.addColorStop(0, "#fff8f4");
+  gradient.addColorStop(0.52, "#ffe8dd");
+  gradient.addColorStop(1, "#ffd6ca");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+
+  for (let i = 0; i < 16; i += 1) {
+    const x = 120 + (i % 4) * 340;
+    const y = 140 + Math.floor(i / 4) * 420;
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = i % 2 === 0 ? "#c8524c" : "#efaa63";
+    ctx.font = `700 ${42 + (i % 3) * 12}px ${fontFamily}`;
+    ctx.fillText(i % 2 === 0 ? "\u2665" : "\u2726", x, y);
+  }
+  ctx.globalAlpha = 1;
+
+  drawRoundRect(ctx, 72, 64, 1456, 260, 44, "rgba(255,250,245,.92)", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `700 40px ${fontFamily}`;
+  ctx.fillText("SBTI LOVE LAB", 126, 146);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = `900 76px ${fontFamily}`;
+  wrapCanvasText(ctx, "你的 SBTI，最适合谈哪一种疯感恋爱？", 126, 232, 1040, 96, "#2f1c17", 2);
+  drawRoundRect(ctx, 1210, 116, 200, 150, 38, "#ffe3d8", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `900 56px ${fontFamily}`;
+  ctx.fillText(result.selectedType.slice(0, 4), 1240, 206);
+
+  drawRoundRect(ctx, 72, 360, 1456, 360, 44, "rgba(255,250,245,.94)", "rgba(200,82,76,.16)");
+  ctx.fillStyle = "#86665c";
+  ctx.font = `700 36px ${fontFamily}`;
+  ctx.fillText(`${result.selectedType} · ${result.selectedTypeMeta.name}`, 126, 438);
+  ctx.fillStyle = "#2f1c17";
+  ctx.font = `900 64px ${fontFamily}`;
+  const verdictLines = wrapCanvasText(ctx, result.verdictLine, 126, 530, 1280, 82, "#2f1c17", 3);
+  ctx.fillStyle = "#72564e";
+  ctx.font = `400 34px ${fontFamily}`;
+  wrapCanvasText(ctx, result.verdictDetail, 126, 530 + verdictLines * 88, 1280, 52, "#72564e", 4);
+
+  drawRoundRect(ctx, 72, 760, 1456, 430, 44, "rgba(255,247,241,.95)", "rgba(239,170,99,.24)");
+  ctx.fillStyle = "#c8524c";
+  ctx.font = `800 40px ${fontFamily}`;
+  ctx.fillText("最适合你的 3 种对象人格", 126, 840);
+  result.ranked.forEach((item, index) => {
+    const y = 915 + index * 112;
+    drawRoundRect(ctx, 126, y - 40, 1348, 82, 28, index === 0 ? "#ffe7dd" : "#fff5ee", "");
+    ctx.fillStyle = "#c8524c";
+    ctx.font = `800 30px ${fontFamily}`;
+    ctx.fillText(`No.${index + 1}`, 162, y + 8);
+    ctx.fillStyle = "#2f1c17";
+    ctx.font = `800 34px ${fontFamily}`;
+    ctx.fillText(`${item.code} · ${item.title}`, 300, y + 8);
+    ctx.fillStyle = "#86665c";
+    ctx.font = `700 28px ${fontFamily}`;
+    ctx.fillText(`总分 ${item.finalScore}`, 1248, y + 8);
+  });
+
+  const blocks = [
+    {
+      title: "谁最容易把你拿捏住",
+      name: `${result.vulnerableMatch.code} · ${result.vulnerableMatch.title}`,
+      scores: `拿捏 ${result.vulnerableMatch.finalScore} / 上头 ${result.vulnerableMatch.hookScore} / 破防 ${result.vulnerableMatch.exploitScore}`,
+      copy: vulnerableSummary(result.vulnerableMatch)
+    },
+    {
+      title: "谁最容易让你上头",
+      name: `${result.hottestMatch.code} · ${result.hottestMatch.title}`,
+      scores: `上头 ${result.hottestMatch.finalScore} / 心动 ${result.hottestMatch.finalScore} / 失智 ${Math.max(0, result.hottestMatch.finalScore - 8)}`,
+      copy: hottestSummary(result.hottestMatch)
+    },
+    {
+      title: "谁最容易把你谈破防",
+      name: `${result.heartbreakMatch.code} · ${result.heartbreakMatch.title}`,
+      scores: `破防 ${result.heartbreakMatch.finalScore} / 内耗 ${result.heartbreakMatch.finalScore} / 扎心 ${Math.max(0, result.heartbreakMatch.finalScore - 6)}`,
+      copy: heartbreakSummary(result.heartbreakMatch)
+    },
+    {
+      title: "谁最容易和你互相折磨",
+      name: `${result.dramaMatch.code} · ${result.dramaMatch.title}`,
+      scores: `折磨 ${result.dramaMatch.finalScore} / 互呛 ${result.dramaMatch.finalScore} / 发疯 ${Math.max(0, result.dramaMatch.finalScore - 5)}`,
+      copy: dramaSummary(result.dramaMatch)
+    }
+  ];
+
+  blocks.forEach((block, index) => {
+    const top = 1234 + index * 364;
+    drawRoundRect(ctx, 72, top, 1456, 316, 44, "rgba(255,243,239,.95)", "rgba(200,82,76,.16)");
+    ctx.fillStyle = "#c8524c";
+    ctx.font = `800 40px ${fontFamily}`;
+    ctx.fillText(block.title, 126, top + 84);
+    ctx.fillStyle = "#2f1c17";
+    ctx.font = `900 50px ${fontFamily}`;
+    ctx.fillText(block.name, 126, top + 162);
+    ctx.fillStyle = "#72564e";
+    ctx.font = `600 30px ${fontFamily}`;
+    wrapCanvasText(ctx, block.scores, 126, top + 220, 1280, 42, "#72564e", 2);
+    ctx.fillStyle = "#86665c";
+    ctx.font = `400 28px ${fontFamily}`;
+    wrapCanvasText(ctx, block.copy, 126, top + 268, 1280, 40, "#86665c", 2);
+  });
+
+  return canvas.toDataURL("image/png");
+}
+
+function renderResult() {
+  const r = state.result;
+  const spicy = spicyLines(r);
+  const summary = holisticSummary(r);
+  const posterModal = state.posterVisible ? `<div class="modal-mask"><div class="modal-card poster-modal"><div class="poster-preview"><img src="${state.posterDataUrl}" alt="结果分享图"></div><div class="modal-actions"><a class="btn poster-link" href="${state.posterDataUrl}" download="${r.selectedType}-love-report.png">保存图片</a><button id="closePosterBtn" class="btn-secondary">关闭</button></div></div></div>` : "";
+  const el = document.getElementById("result");
+  el.innerHTML = `<div class="card floating-wrap">${renderFloatingHearts()}<div class="row"><span class="pill">你的恋爱风格：${r.archetype}</span></div><div class="result-head"><div class="result-avatar">${renderAvatar(r.selectedTypeMeta, "avatar-lg")}</div><div><h2 class="title" style="font-size:36px;">${r.selectedType} · ${r.selectedTypeMeta.name}</h2><p class="sub">${r.summary}</p></div></div><div class="verdict-hero"><div class="verdict-line">${r.verdictLine}</div><div class="verdict-detail">${r.verdictDetail}</div></div></div><div class="card share-card"><div><div class="share-title">把这份结果发出去</div><div class="share-copy">你可以生成一张更精致的结果图，也可以直接复制完整链接。现在这两条链路都只保留最稳的版本，不再给你添乱。</div></div><div class="share-actions"><button id="makePosterBtn" class="btn">生成结果图</button><button id="shareLinkBtn" class="btn-secondary">复制测试完整链接</button></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 16px;">五边形风格图</h3><div class="radar-wrap"><div class="radar-box">${radarSvg(r.styleScores, r.targetPartnerVector)}</div><div><div class="legend"><div class="legend-item"><span class="dot" style="background:#c8524c"></span>你的恋爱风格</div><div class="legend-item"><span class="dot" style="background:#efaa63"></span>理想对象画像</div></div><p class="sub" style="margin-top:14px;">红色是你在关系里的真实运行方式，橙色是系统推出来的“你更适合什么样的人”。这张图的作用不是装神秘，是解释下面那一串结论为什么会这么排。</p><div class="summary-box"><div class="summary-title">综合分析</div><div class="summary-copy">${summary.replace(/\n\n/g, "<br><br>")}</div></div></div></div></div><div class="spicy-card"><div class="spicy-title">辛辣解读</div><div class="spicy-copy">别装了，我来告诉你你在恋爱里到底什么死样：</div><div class="spicy-grid">${spicy.map((item) => `<div class="spicy-item"><div class="spicy-head">${item.head}</div><div class="spicy-text">${item.text}</div></div>`).join("")}</div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">最适合你的 3 种对象人格</h3><p class="sub" style="margin-top:0;">总分是最终排序分。贴合度是主分；互补加分和稳定加分是 bonus，不跟贴合度按同一把尺子比。</p><div class="list">${r.ranked.map((item, index) => `<div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: item.code, name: item.title }, "avatar-sm")}<div><div class="match-rank">No.${index + 1} · ${item.code}</div><div class="match-name">${item.title}</div></div></div><div class="match-score">总分 ${item.finalScore}</div></div><div class="match-copy">${item.tag}</div><div class="match-reason">${item.reason}</div><div class="row" style="margin-top:12px;"><span class="pill">贴合度 ${item.fitScore}</span><span class="pill">互补加分 ${item.complementBonus}</span><span class="pill">稳定加分 ${item.stabilityBonus}</span></div><div class="match-copy">${explainScore(item)}</div><div class="match-copy">${item.note}</div></div>`).join("")}</div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易把你拿捏住</h3><p class="sub" style="margin-top:0;">这不是最适合你的那类人，这是最容易让你清醒值先掉线的那类人。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.vulnerableMatch.code, name: r.vulnerableMatch.title }, "avatar-sm")}<div><div class="match-rank">危险对象 · ${r.vulnerableMatch.code}</div><div class="match-name">${r.vulnerableMatch.title}</div></div></div><div class="match-score">拿捏指数 ${r.vulnerableMatch.finalScore}</div></div><div class="match-copy">${r.vulnerableMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">上头指数 ${r.vulnerableMatch.hookScore}</span><span class="pill">破防指数 ${r.vulnerableMatch.exploitScore}</span></div><div class="match-copy">${vulnerableSummary(r.vulnerableMatch)}</div><div class="match-copy">${r.vulnerableMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易让你上头</h3><p class="sub" style="margin-top:0;">不是最稳，但就是很容易让你脑子还没反应过来，心已经先冲了。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.hottestMatch.code, name: r.hottestMatch.title }, "avatar-sm")}<div><div class="match-rank">上头对象 · ${r.hottestMatch.code}</div><div class="match-name">${r.hottestMatch.title}</div></div></div><div class="match-score">上头指数 ${r.hottestMatch.finalScore}</div></div><div class="match-copy">${r.hottestMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">心动指数 ${r.hottestMatch.finalScore}</span><span class="pill">失智指数 ${Math.max(0, r.hottestMatch.finalScore - 8)}</span></div><div class="match-copy">${hottestSummary(r.hottestMatch)}</div><div class="match-copy">${r.hottestMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易把你谈破防</h3><p class="sub" style="margin-top:0;">这类人最会在你嘴硬的时候，精准敲到你心态最脆那一块。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.heartbreakMatch.code, name: r.heartbreakMatch.title }, "avatar-sm")}<div><div class="match-rank">破防对象 · ${r.heartbreakMatch.code}</div><div class="match-name">${r.heartbreakMatch.title}</div></div></div><div class="match-score">破防指数 ${r.heartbreakMatch.finalScore}</div></div><div class="match-copy">${r.heartbreakMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">内耗指数 ${r.heartbreakMatch.finalScore}</span><span class="pill">扎心指数 ${Math.max(0, r.heartbreakMatch.finalScore - 6)}</span></div><div class="match-copy">${heartbreakSummary(r.heartbreakMatch)}</div><div class="match-copy">${r.heartbreakMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易和你互相折磨</h3><p class="sub" style="margin-top:0;">这种组合不一定不爱，但很容易你一句我一句，最后把关系谈成狗血番外篇。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.dramaMatch.code, name: r.dramaMatch.title }, "avatar-sm")}<div><div class="match-rank">互磨对象 · ${r.dramaMatch.code}</div><div class="match-name">${r.dramaMatch.title}</div></div></div><div class="match-score">折磨指数 ${r.dramaMatch.finalScore}</div></div><div class="match-copy">${r.dramaMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">互呛指数 ${r.dramaMatch.finalScore}</span><span class="pill">发疯指数 ${Math.max(0, r.dramaMatch.finalScore - 5)}</span></div><div class="match-copy">${dramaSummary(r.dramaMatch)}</div><div class="match-copy">${r.dramaMatch.note}</div></div></div><div class="actions"><button id="reviewBtn" class="btn">查看详细复盘</button><button id="restartBtn" class="btn-secondary">重新测一次</button></div>${posterModal}`;
+  el.querySelector("#makePosterBtn").onclick = openPosterModal;
+  el.querySelector("#shareLinkBtn").onclick = copyShareLink;
+  el.querySelector("#reviewBtn").onclick = () => {
+    renderReview();
+    showScreen("review");
+  };
+  el.querySelector("#restartBtn").onclick = () => {
+    reset(true);
+    renderQuiz();
+    showScreen("quiz");
+  };
+  if (state.posterVisible) {
+    el.querySelector("#closePosterBtn").onclick = closePosterModal;
+  }
+}
