@@ -1003,8 +1003,27 @@ function getAvatarSources(code) {
   return unique;
 }
 
+function getLocalAvatarSources(code) {
+  const original = String(code);
+  const normalized = original.replace(/!/g, "");
+  return Array.from(new Set([
+    `./assets/avatars/${normalized}.png`,
+    `./assets/avatars/${normalized}.webp`,
+    `./assets/avatars/${normalized}.jpg`,
+    `./assets/avatars/${original}.png`,
+    `./assets/avatars/${original}.webp`,
+    `./assets/avatars/${original}.jpg`
+  ]));
+}
+
+function isMobileDevice() {
+  const ua = navigator.userAgent || "";
+  return /Android|iPhone|iPad|iPod|HarmonyOS|Mobile/i.test(ua) || (navigator.maxTouchPoints || 0) > 1;
+}
+
 function renderAvatar(type, className = "") {
-  const sources = getAvatarSources(type.code);
+  // Mobile should not block on slow remote avatar fallbacks.
+  const sources = isMobileDevice() ? getLocalAvatarSources(type.code) : getAvatarSources(type.code);
   const extra = className ? ` ${className}` : "";
   return `<div class="avatar${extra}"><img src="${sources[0]}" data-sources="${sources.join("|")}" data-index="0" alt="${type.code} ${type.name}" loading="lazy" onerror="(function(img){const list=img.dataset.sources.split('|');const next=Number(img.dataset.index)+1;if(next<list.length){img.dataset.index=String(next);img.src=list[next];}else{img.style.display='none';img.nextElementSibling.style.display='flex';}})(this)"><span class="avatar-fallback">${String(type.code).slice(0, 4)}</span></div>`;
 }
@@ -1688,7 +1707,8 @@ function isWeChat() {
 
 function loadPosterAvatar(code) {
   const allowOrigins = new Set([location.origin, "https://wsrv.nl"]);
-  const sources = getAvatarSources(code).filter((src) => {
+  const baseSources = isMobileDevice() ? getLocalAvatarSources(code) : getAvatarSources(code);
+  const sources = baseSources.filter((src) => {
     if (!/^https?:/i.test(src)) return true;
     try {
       const url = new URL(src, location.href);
@@ -1706,9 +1726,28 @@ function loadPosterAvatar(code) {
       }
       const img = new Image();
       const src = sources[index];
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        index += 1;
+        tryNext();
+      }, isMobileDevice() ? 450 : 1200);
       if (/^https?:/i.test(src)) img.crossOrigin = "anonymous";
-      img.onload = () => resolve(img);
+      img.onload = () => {
+        if (settled) return;
+        clearTimeout(timeout);
+        finish(img);
+      };
       img.onerror = () => {
+        if (settled) return;
+        clearTimeout(timeout);
+        settled = true;
         index += 1;
         tryNext();
       };
@@ -2051,9 +2090,14 @@ async function openPosterModal() {
   state.posterDataUrl = "";
   renderResult();
   await sleep(16);
-  const url = await buildPosterV2(state.result);
-  state.posterKey = key;
-  state.posterDataUrl = url;
+  try {
+    // On mobile browsers, prefer a fast, stable poster over waiting on remote avatars.
+    const url = await buildPosterV2(state.result, { forceNoImages: isMobileDevice() });
+    state.posterKey = key;
+    state.posterDataUrl = url;
+  } catch (err) {
+    state.posterDataUrl = await buildPosterV2(state.result, { forceNoImages: true });
+  }
   state.posterLoading = false;
   renderResult();
 }
