@@ -981,16 +981,11 @@ function getAvatarSources(code) {
   const original = String(code);
   const normalized = original.replace(/!/g, "");
   const unique = Array.from(new Set([
+    ...getAvatarAssetCandidates(original).map((filename) => `./assets/avatars/${filename}`),
     `https://wsrv.nl/?url=www.sbti.ai/images/types/${normalized}.png`,
     `https://wsrv.nl/?url=www.sbti.ai/images/types/${original}.png`,
     `https://www.sbti.ai/images/types/${normalized}.png`,
     `https://www.sbti.ai/images/types/${original}.png`,
-    `./assets/avatars/${normalized}.png`,
-    `./assets/avatars/${original}.png`,
-    `./assets/avatars/${normalized}.webp`,
-    `./assets/avatars/${original}.webp`,
-    `./assets/avatars/${normalized}.jpg`,
-    `./assets/avatars/${original}.jpg`,
     `https://wsrv.nl/?url=www.sbti.ai/images/types/${normalized}.jpg`,
     `https://wsrv.nl/?url=www.sbti.ai/images/types/${normalized}.webp`,
     `https://wsrv.nl/?url=www.sbti.ai/images/types/${original}.jpg`,
@@ -1008,10 +1003,39 @@ function isMobileDevice() {
   return /Android|iPhone|iPad|iPod|HarmonyOS|Mobile/i.test(ua) || (navigator.maxTouchPoints || 0) > 1;
 }
 
+const AVATAR_FILE_MAP = {
+  "OH-NO!": "OH-NO.png",
+  "DRUN-K": "DRUNK.png",
+  "DRUNK": "DRUNK.png",
+  "Dior-s": "Dior-s.jpg",
+  "JOKE-R": "JOKE-R.jpg"
+};
+
+function getAvatarAssetCandidates(code) {
+  const original = String(code);
+  const normalized = original.replace(/!/g, "");
+  const mapped = AVATAR_FILE_MAP[original];
+  const candidates = [];
+  if (mapped) candidates.push(mapped);
+  candidates.push(`${original}.png`, `${normalized}.png`, `${original}.jpg`, `${normalized}.jpg`, `${original}.webp`, `${normalized}.webp`);
+  return Array.from(new Set(candidates));
+}
+
 function renderAvatar(type, className = "") {
   const sources = getAvatarSources(type.code);
   const extra = className ? ` ${className}` : "";
   return `<div class="avatar${extra}"><img src="${sources[0]}" data-sources="${sources.join("|")}" data-index="0" alt="${type.code} ${type.name}" loading="lazy" onerror="(function(img){const list=img.dataset.sources.split('|');const next=Number(img.dataset.index)+1;if(next<list.length){img.dataset.index=String(next);img.src=list[next];}else{img.style.display='none';img.nextElementSibling.style.display='flex';}})(this)"><span class="avatar-fallback">${String(type.code).slice(0, 4)}</span></div>`;
+}
+
+function preloadAvatarAssets() {
+  const codes = Array.from(new Set(SBTI_TYPES.map((item) => item.code)));
+  codes.forEach((code) => {
+    getAvatarAssetCandidates(code).forEach((filename) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = `./assets/avatars/${filename}`;
+    });
+  });
 }
 
 function getShareUrl() {
@@ -1357,6 +1381,11 @@ function renderReview() {
 }
 
 renderWelcome();
+if (typeof requestIdleCallback === "function") {
+  requestIdleCallback(() => preloadAvatarAssets());
+} else {
+  setTimeout(preloadAvatarAssets, 200);
+}
 
 const SHARE_FALLBACK_URL = "https://xpmsx3.github.io/sbti-love-game-html-preview/";
 
@@ -2049,16 +2078,6 @@ async function buildPosterV2(result, { forceNoImages = false } = {}) {
 }
 
 async function openPosterModal() {
-  // In WeChat webview, downloading is awkward and can lose state. Use a screenshot-friendly layout instead.
-  if (isWeChat()) {
-    state.posterMode = "shot";
-    state.posterVisible = true;
-    state.posterLoading = false;
-    state.posterDataUrl = "";
-    renderResult();
-    return;
-  }
-
   // PNG mode (browser): cache for this result to avoid re-rendering.
   const key = JSON.stringify([state.selectedType, state.answers]);
   if (state.posterDataUrl && state.posterKey === key) {
