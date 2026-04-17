@@ -981,39 +981,26 @@ function getAvatarSources(code) {
   const original = String(code);
   const normalized = original.replace(/!/g, "");
   const unique = Array.from(new Set([
-    `./assets/avatars/${normalized}.png`,
-    `./assets/avatars/${normalized}.webp`,
-    `./assets/avatars/${normalized}.jpg`,
-    `./assets/avatars/${original}.png`,
-    `./assets/avatars/${original}.webp`,
-    `./assets/avatars/${original}.jpg`,
     `https://wsrv.nl/?url=www.sbti.ai/images/types/${normalized}.png`,
+    `https://wsrv.nl/?url=www.sbti.ai/images/types/${original}.png`,
+    `https://www.sbti.ai/images/types/${normalized}.png`,
+    `https://www.sbti.ai/images/types/${original}.png`,
+    `./assets/avatars/${normalized}.png`,
+    `./assets/avatars/${original}.png`,
+    `./assets/avatars/${normalized}.webp`,
+    `./assets/avatars/${original}.webp`,
+    `./assets/avatars/${normalized}.jpg`,
+    `./assets/avatars/${original}.jpg`,
     `https://wsrv.nl/?url=www.sbti.ai/images/types/${normalized}.jpg`,
     `https://wsrv.nl/?url=www.sbti.ai/images/types/${normalized}.webp`,
-    `https://wsrv.nl/?url=www.sbti.ai/images/types/${original}.png`,
     `https://wsrv.nl/?url=www.sbti.ai/images/types/${original}.jpg`,
     `https://wsrv.nl/?url=www.sbti.ai/images/types/${original}.webp`,
-    `https://www.sbti.ai/images/types/${normalized}.png`,
     `https://www.sbti.ai/images/types/${normalized}.jpg`,
     `https://www.sbti.ai/images/types/${normalized}.webp`,
-    `https://www.sbti.ai/images/types/${original}.png`,
     `https://www.sbti.ai/images/types/${original}.jpg`,
     `https://www.sbti.ai/images/types/${original}.webp`
   ]));
   return unique;
-}
-
-function getLocalAvatarSources(code) {
-  const original = String(code);
-  const normalized = original.replace(/!/g, "");
-  return Array.from(new Set([
-    `./assets/avatars/${normalized}.png`,
-    `./assets/avatars/${normalized}.webp`,
-    `./assets/avatars/${normalized}.jpg`,
-    `./assets/avatars/${original}.png`,
-    `./assets/avatars/${original}.webp`,
-    `./assets/avatars/${original}.jpg`
-  ]));
 }
 
 function isMobileDevice() {
@@ -1022,8 +1009,7 @@ function isMobileDevice() {
 }
 
 function renderAvatar(type, className = "") {
-  // Mobile should not block on slow remote avatar fallbacks.
-  const sources = isMobileDevice() ? getLocalAvatarSources(type.code) : getAvatarSources(type.code);
+  const sources = getAvatarSources(type.code);
   const extra = className ? ` ${className}` : "";
   return `<div class="avatar${extra}"><img src="${sources[0]}" data-sources="${sources.join("|")}" data-index="0" alt="${type.code} ${type.name}" loading="lazy" onerror="(function(img){const list=img.dataset.sources.split('|');const next=Number(img.dataset.index)+1;if(next<list.length){img.dataset.index=String(next);img.src=list[next];}else{img.style.display='none';img.nextElementSibling.style.display='flex';}})(this)"><span class="avatar-fallback">${String(type.code).slice(0, 4)}</span></div>`;
 }
@@ -1707,8 +1693,7 @@ function isWeChat() {
 
 function loadPosterAvatar(code) {
   const allowOrigins = new Set([location.origin, "https://wsrv.nl"]);
-  const baseSources = isMobileDevice() ? getLocalAvatarSources(code) : getAvatarSources(code);
-  const sources = baseSources.filter((src) => {
+  const sources = getAvatarSources(code).filter((src) => {
     if (!/^https?:/i.test(src)) return true;
     try {
       const url = new URL(src, location.href);
@@ -1737,7 +1722,7 @@ function loadPosterAvatar(code) {
         settled = true;
         index += 1;
         tryNext();
-      }, isMobileDevice() ? 450 : 1200);
+      }, isMobileDevice() ? 900 : 1400);
       if (/^https?:/i.test(src)) img.crossOrigin = "anonymous";
       img.onload = () => {
         if (settled) return;
@@ -2091,12 +2076,15 @@ async function openPosterModal() {
   renderResult();
   await sleep(16);
   try {
-    // On mobile browsers, prefer a fast, stable poster over waiting on remote avatars.
-    const url = await buildPosterV2(state.result, { forceNoImages: isMobileDevice() });
+    const url = await buildPosterV2(state.result);
     state.posterKey = key;
     state.posterDataUrl = url;
   } catch (err) {
-    state.posterDataUrl = await buildPosterV2(state.result, { forceNoImages: true });
+    try {
+      state.posterDataUrl = await buildPosterV2(state.result, { forceNoImages: true });
+    } catch (fallbackErr) {
+      state.posterDataUrl = "";
+    }
   }
   state.posterLoading = false;
   renderResult();
@@ -2220,7 +2208,17 @@ function renderResult() {
   const r = state.result;
   const spicy = spicyLines(r);
   const summary = holisticSummary(r);
-  const posterModal = state.posterVisible ? `<div class="modal-mask"><div class="modal-card poster-modal"><div class="poster-preview"><img src="${state.posterDataUrl}" alt="结果分享图"></div><div class="modal-actions"><a class="btn poster-link" href="${state.posterDataUrl}" download="${r.selectedType}-love-report.png">保存图片</a><button id="closePosterBtn" class="btn-secondary">关闭</button></div></div></div>` : "";
+  const posterBody = state.posterLoading
+    ? `<div class="poster-preview"><div class="sub" style="margin:0;">结果图生成中，头像也在一起加载…</div></div>`
+    : state.posterDataUrl
+      ? `<div class="poster-preview"><img src="${state.posterDataUrl}" alt="结果分享图"></div>`
+      : `<div class="poster-preview"><div class="sub" style="margin:0;">这次结果图没成功出来，再点一次“生成结果图”就行。</div></div>`;
+  const posterActions = state.posterLoading
+    ? `<div class="modal-actions"><button id="closePosterBtn" class="btn-secondary">关闭</button></div>`
+    : state.posterDataUrl
+      ? `<div class="modal-actions"><a class="btn poster-link" href="${state.posterDataUrl}" download="${r.selectedType}-love-report.png">保存图片</a><button id="closePosterBtn" class="btn-secondary">关闭</button></div>`
+      : `<div class="modal-actions"><button id="retryPosterBtn" class="btn">重新生成结果图</button><button id="closePosterBtn" class="btn-secondary">关闭</button></div>`;
+  const posterModal = state.posterVisible ? `<div class="modal-mask"><div class="modal-card poster-modal">${posterBody}${posterActions}</div></div>` : "";
   const el = document.getElementById("result");
   const shareCard = `<div class="card share-card"><div><div class="share-title">把这份结果发出去</div><div class="share-copy">你可以生成一张更精致的结果图，也可以直接复制完整链接。现在这两条链路都只保留最稳的版本，不再给你添乱。</div></div><div class="share-actions"><button id="makePosterBtn" class="btn">生成结果图</button><button id="shareLinkBtn" class="btn-secondary">复制测试完整链接</button></div></div>`;
   el.innerHTML = `<div class="card floating-wrap">${renderFloatingHearts()}<div class="row"><span class="pill">你的恋爱风格：${r.archetype}</span></div><div class="result-head"><div class="result-avatar">${renderAvatar(r.selectedTypeMeta, "avatar-lg")}</div><div><h2 class="title" style="font-size:36px;">${r.selectedType} · ${r.selectedTypeMeta.name}</h2><p class="sub">${r.summary}</p></div></div><div class="verdict-hero"><div class="verdict-line">${r.verdictLine}</div><div class="verdict-detail">${r.verdictDetail}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 16px;">五边形风格图</h3><div class="radar-wrap"><div class="radar-box">${radarSvg(r.styleScores, r.targetPartnerVector)}</div><div><div class="legend"><div class="legend-item"><span class="dot" style="background:#c8524c"></span>你的恋爱风格</div><div class="legend-item"><span class="dot" style="background:#efaa63"></span>理想对象画像</div></div><p class="sub" style="margin-top:14px;">红色是你在关系里的真实运行方式，橙色是系统推出来的“你更适合什么样的人”。这张图的作用不是装神秘，是解释下面那一串结论为什么会这么排。</p><div class="summary-box"><div class="summary-title">综合分析</div><div class="summary-copy">${summary.replace(/\n\n/g, "<br><br>")}</div></div></div></div></div><div class="spicy-card"><div class="spicy-title">辛辣解读</div><div class="spicy-copy">别装了，我来告诉你你在恋爱里到底什么死样：</div><div class="spicy-grid">${spicy.map((item) => `<div class="spicy-item"><div class="spicy-head">${item.head}</div><div class="spicy-text">${item.text}</div></div>`).join("")}</div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">最适合你的 3 种对象人格</h3><p class="sub" style="margin-top:0;">总分是最终排序分。贴合度是主分；互补加分和稳定加分是 bonus，不跟贴合度按同一把尺子比。</p><div class="list">${r.ranked.map((item, index) => `<div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: item.code, name: item.title }, "avatar-sm")}<div><div class="match-rank">No.${index + 1} · ${item.code}</div><div class="match-name">${item.title}</div></div></div><div class="match-score">总分 ${item.finalScore}</div></div><div class="match-copy">${item.tag}</div><div class="match-reason">${item.reason}</div><div class="row" style="margin-top:12px;"><span class="pill">贴合度 ${item.fitScore}</span><span class="pill">互补加分 ${item.complementBonus}</span><span class="pill">稳定加分 ${item.stabilityBonus}</span></div><div class="match-copy">${explainScore(item)}</div><div class="match-copy">${item.note}</div></div>`).join("")}</div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易把你拿捏住</h3><p class="sub" style="margin-top:0;">这不是最适合你的那类人，这是最容易让你清醒值先掉线的那类人。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.vulnerableMatch.code, name: r.vulnerableMatch.title }, "avatar-sm")}<div><div class="match-rank">危险对象 · ${r.vulnerableMatch.code}</div><div class="match-name">${r.vulnerableMatch.title}</div></div></div><div class="match-score">拿捏指数 ${r.vulnerableMatch.finalScore}</div></div><div class="match-copy">${r.vulnerableMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">上头指数 ${r.vulnerableMatch.hookScore}</span><span class="pill">破防指数 ${r.vulnerableMatch.exploitScore}</span></div><div class="match-copy">${vulnerableSummary(r.vulnerableMatch)}</div><div class="match-copy">${r.vulnerableMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易让你上头</h3><p class="sub" style="margin-top:0;">不是最稳，但就是很容易让你脑子还没反应过来，心已经先冲了。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.hottestMatch.code, name: r.hottestMatch.title }, "avatar-sm")}<div><div class="match-rank">上头对象 · ${r.hottestMatch.code}</div><div class="match-name">${r.hottestMatch.title}</div></div></div><div class="match-score">上头指数 ${r.hottestMatch.finalScore}</div></div><div class="match-copy">${r.hottestMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">心动指数 ${r.hottestMatch.finalScore}</span><span class="pill">失智指数 ${Math.max(0, r.hottestMatch.finalScore - 8)}</span></div><div class="match-copy">${hottestSummary(r.hottestMatch)}</div><div class="match-copy">${r.hottestMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易把你谈破防</h3><p class="sub" style="margin-top:0;">这类人最会在你嘴硬的时候，精准敲到你心态最脆那一块。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.heartbreakMatch.code, name: r.heartbreakMatch.title }, "avatar-sm")}<div><div class="match-rank">破防对象 · ${r.heartbreakMatch.code}</div><div class="match-name">${r.heartbreakMatch.title}</div></div></div><div class="match-score">破防指数 ${r.heartbreakMatch.finalScore}</div></div><div class="match-copy">${r.heartbreakMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">内耗指数 ${r.heartbreakMatch.finalScore}</span><span class="pill">扎心指数 ${Math.max(0, r.heartbreakMatch.finalScore - 6)}</span></div><div class="match-copy">${heartbreakSummary(r.heartbreakMatch)}</div><div class="match-copy">${r.heartbreakMatch.note}</div></div></div><div class="card"><h3 style="font-size:26px;margin:0 0 10px;">谁最容易和你互相折磨</h3><p class="sub" style="margin-top:0;">这种组合不一定不爱，但很容易你一句我一句，最后把关系谈成狗血番外篇。</p><div class="match-card"><div class="match-head"><div class="match-main">${renderAvatar({ code: r.dramaMatch.code, name: r.dramaMatch.title }, "avatar-sm")}<div><div class="match-rank">互磨对象 · ${r.dramaMatch.code}</div><div class="match-name">${r.dramaMatch.title}</div></div></div><div class="match-score">折磨指数 ${r.dramaMatch.finalScore}</div></div><div class="match-copy">${r.dramaMatch.tag}</div><div class="row" style="margin-top:12px;"><span class="pill">互呛指数 ${r.dramaMatch.finalScore}</span><span class="pill">发疯指数 ${Math.max(0, r.dramaMatch.finalScore - 5)}</span></div><div class="match-copy">${dramaSummary(r.dramaMatch)}</div><div class="match-copy">${r.dramaMatch.note}</div></div></div>${shareCard}<div class="actions"><button id="reviewBtn" class="btn-secondary">查看详细复盘</button><button id="restartBtn" class="btn-secondary">重新测一次</button></div>${posterModal}`;
@@ -2237,5 +2235,7 @@ function renderResult() {
   };
   if (state.posterVisible) {
     el.querySelector("#closePosterBtn").onclick = closePosterModal;
+    const retryPosterBtn = el.querySelector("#retryPosterBtn");
+    if (retryPosterBtn) retryPosterBtn.onclick = openPosterModal;
   }
 }
