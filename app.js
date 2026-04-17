@@ -7,7 +7,7 @@ const AXIS_META = {
   rhythm: { left: "随缘", right: "推进" }
 };
 
-const TYPES = [
+const LEGACY_TYPES_UNUSED = [
   { code: "MONK", name: "僧人", tag: "没有那种世俗的欲望", blurb: "边界感很强，看起来平静，其实不是谁都进得去。" },
   { code: "IMSB", name: "自我攻击者", tag: "是不是我又演砸了", blurb: "一边心动一边自我拉扯，内耗能力惊人。" },
   { code: "IMFW", name: "废物", tag: "我不会又搞砸吧", blurb: "敏感，真诚，也很容易因为一点反馈就怀疑自己。" },
@@ -26,7 +26,7 @@ const TYPES = [
   { code: "FUCK", name: "草人", tag: "先爆再说", blurb: "脾气来得快，热情也来得快，能量感很强。" }
 ];
 
-const TYPE_VECTORS = {
+const LEGACY_TYPE_VECTORS_UNUSED = {
   MONK: { spark: 32, warmth: 36, freedom: 78, directness: 40, rhythm: 42 },
   IMSB: { spark: 45, warmth: 70, freedom: 44, directness: 24, rhythm: 38 },
   IMFW: { spark: 42, warmth: 74, freedom: 40, directness: 28, rhythm: 40 },
@@ -45,7 +45,7 @@ const TYPE_VECTORS = {
   FUCK: { spark: 86, warmth: 42, freedom: 52, directness: 88, rhythm: 72 }
 };
 
-const TYPE_VERDICTS = {
+const LEGACY_TYPE_VERDICTS_UNUSED = {
   MONK: {
     line: "你不是没人追，你是筛选器开得像寺庙山门。",
     detail: "你谈恋爱最强的不是热情，是边界。能让你动心的人，必须先通过你那套很安静但很严格的内部审核。"
@@ -112,7 +112,7 @@ const TYPE_VERDICTS = {
   }
 };
 
-const MATCH_NOTES = {
+const LEGACY_MATCH_NOTES_UNUSED = {
   MONK: "这类人不是热闹挂的，但胜在边界清楚、情绪不乱，适合把关系谈得安静又耐久。",
   IMSB: "这类人敏感度高，会认真接情绪，但也需要足够的安全感，不然容易一起内耗。",
   IMFW: "这类人真诚软糯，能给关系温度，但需要稳定反馈，不能靠忽冷忽热养着。",
@@ -251,7 +251,7 @@ const SBTI_MATCH_NOTES = {
   DRUNK: "这类人很吃氛围，夜晚和情绪都会放大他们的投入，适合有浪漫感但也要防上头过快。"
 };
 
-const SCENES = [
+const LEGACY_SCENES_UNUSED = [
   {
     title: "关卡一：夜市量子纠缠",
     setting: "你和暧昧对象走进夜市，前方同时出现烤肠、算命摊、荧光蘑菇发卡和一只会唱苦情歌的玩具鸭。",
@@ -643,7 +643,9 @@ const QUESTIONS = QUIZ_SCENES.flatMap((scene, sceneIndex) =>
     id: `q-${sceneIndex + 1}-${questionIndex + 1}`,
     sceneTitle: scene.title,
     sceneSetting: scene.setting,
-    sceneIndex
+    sceneIndex,
+    sceneQuestionIndex: questionIndex,
+    sceneQuestionCount: scene.questions.length
   }))
 );
 
@@ -1051,7 +1053,7 @@ function chooseAndGo(optionIndex) {
 function renderQuiz() {
   const q = QUESTIONS[state.questionIndex];
   const scene = QUIZ_SCENES[q.sceneIndex];
-  const done = scene.questions.filter((_, idx) => idx < (state.questionIndex - q.sceneIndex * 3)).length;
+  const done = q.sceneQuestionIndex;
   const progress = ((state.questionIndex + 1) / QUESTIONS.length) * 100;
   const type = getType(state.selectedType);
   const el = document.getElementById("quiz");
